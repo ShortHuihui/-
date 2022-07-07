@@ -3,7 +3,7 @@
    private float map3DWidth = 1350f;//场景宽度 1350/  1000      
     private float map2Dwidth;//小地图宽度 
     private float widthScale;//两者比例、
-    //设置小地图大小
+    //设置小地图大小（因为Change2DPlayerPos是在Update里一直执行的，所以改变地图大小，玩家位置也会重新计算，然后保证不会出错）
     private void SetMapSize(float scale)
     {
         mapBg.GetComponent<RectTransform>().sizeDelta *= scale;
