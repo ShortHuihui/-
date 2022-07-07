@@ -1,0 +1,29 @@
+unity会在update和latedupdate之间进行一些动画和渲染的处理。因此相机的移动最好放在latedupdate里面
+  //相机一直跟随在玩家向后4米，向上7米的地方
+    Transform targetTrans = null;
+    Vector3 targetPos;
+    Vector3 startPos;
+    float zOffset = -4;
+    float yOffset = 7;
+    float time = 0;
+    private void LateUpdate()
+    {
+        //匀速跟随 
+        if (targetPos!=targetTrans.position + targetTrans.forward * zOffset + targetTrans.up*yOffset)
+        {
+            targetPos = targetTrans.position + targetTrans.forward * zOffset + targetTrans.up * yOffset;
+            startPos = this.transform.position;
+            time = 0;
+        }
+        time += Time.deltaTime;
+        this.transform.position = Vector3.Lerp(startPos,targetPos,time);
+        this.transform.LookAt(targetTrans);
+
+        //先快后慢
+        if (targetPos != targetTrans.position + targetTrans.forward * zOffset + targetTrans.up * yOffset)
+        {
+            targetPos = targetTrans.position + targetTrans.forward * zOffset + targetTrans.up * yOffset;
+        }
+        this.transform.position = Vector3.Lerp(this.transform.position, targetPos, Time.deltaTime);
+        this.transform.LookAt(targetTrans);
+    }
