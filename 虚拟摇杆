@@ -1,0 +1,158 @@
+关键是把我们遥感的方向转换为玩家的朝向。
+  private void SetDir()
+    {
+        float angle = Vector2.SignedAngle(Dir, new Vector2(0, 1));
+        Vector3 eulerAngles = new Vector3(0,angle,0);
+        transform.localEulerAngles = eulerAngles;
+    }
+还有就是继承自这些接口 IPointerDownHandler,IPointerUpHandler,IDragHandler
+还有就是结合钳制函数设置获得的遥感的dir的长度
+ listener.onDrag+= (PointerEventData evt) =>
+        {
+            Vector2 dir = evt.position - startPos;
+            float len = dir.magnitude;
+            if (len > screenPointDis)
+            {
+                Vector2 clampDir = Vector2.ClampMagnitude(dir, screenPointDis);
+                imgPoint.transform.position = startPos + clampDir;
+            }
+            else
+            {
+                imgPoint.transform.position = evt.position;
+            }
+            ctrl.Dir = dir;
+        };
+TouchListener类：
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+public class TouchListener :MonoBehaviour, IPointerDownHandler,IPointerUpHandler,IDragHandler
+{
+    public Action<PointerEventData> onClickDown;
+    public Action<PointerEventData> onClickUp;
+    public Action<PointerEventData> onDrag;
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (onDrag != null)
+        {
+            onDrag(eventData);
+        }
+    }
+
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        if (onClickDown != null)
+        {
+            onClickDown(eventData);
+        }
+    }
+
+    public void OnPointerUp(PointerEventData eventData)
+    {
+        if (onClickUp != null)
+        {
+            onClickUp(eventData);
+        }
+    }
+}
+
+UI控件类：
+
+public void RegisterTouchEvents()
+    {
+        TouchListener listener = imgTouch.gameObject.AddComponent<TouchListener>();
+        listener.onClickDown += (PointerEventData evt) =>
+        {
+            startPos = evt.position;
+            imgBg.transform.position = evt.position;
+            imgPoint.transform.position = evt.position;
+            imgPoint.gameObject.SetActive(true);
+        };
+        listener.onClickUp += (PointerEventData evt) =>
+        {
+            imgBg.transform.position = defaultPos;
+            imgPoint.gameObject.SetActive(false);
+            ctrl.Dir = Vector2.zero;
+        };
+        listener.onDrag+= (PointerEventData evt) =>
+        {
+            Vector2 dir = evt.position - startPos;
+            float len = dir.magnitude;
+            if (len > screenPointDis)
+            {
+                Vector2 clampDir = Vector2.ClampMagnitude(dir, screenPointDis);
+                imgPoint.transform.position = startPos + clampDir;
+            }
+            else
+            {
+                imgPoint.transform.position = evt.position;
+            }
+            ctrl.Dir = dir;
+        };
+    }
+PlayerController类：
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.AI;
+using UnityEngine.Experimental.AI;
+
+public class PlayerController : MonoBehaviour
+{
+    public float Speed =10f;
+    private Transform camTrans;
+    private Vector3 camOffset;
+    private CharacterController ctrl;
+
+    private bool isMove = false;
+    private Vector2 dir = Vector2.zero;
+    public Vector2 Dir { get { return dir; }
+        set
+        {
+            if (value ==Vector2.zero)
+            {
+                isMove = false;
+            }
+            else
+            {
+                isMove = true;
+            }
+            dir = value; } }
+    private void Start()
+    {
+        camTrans = Camera.main.transform;
+        camOffset = transform.position - camTrans.position;
+        ctrl = GetComponent<CharacterController>();
+    }
+    private void Update()
+    {
+        if (isMove)
+        {
+            SetDir();
+            SetMove();
+            SetCam();
+        }
+    }
+    private void SetDir()
+    {
+        float angle = Vector2.SignedAngle(Dir, new Vector2(0, 1));
+        Vector3 eulerAngles = new Vector3(0,angle,0);
+        transform.localEulerAngles = eulerAngles;
+    }
+    private void SetMove()
+    {
+        ctrl.Move(transform.forward*Time.deltaTime*Speed);
+    }
+    private void SetCam()
+    {
+        if (camTrans!=null)
+        {
+            camTrans.position = transform.position - camOffset;
+        }
+    }
+}
+
