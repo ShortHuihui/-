@@ -1,0 +1,6 @@
+首先UI的自适应我们会设置UI Scale Mode是Scale With ScreenSize 
+然后Screen Match Mode 是Match Width or Height 然后是高度
+默认分辨率是1920*1080的话
+那就是 1080/Screen.Height 就得到了宽高比Value。
+然后原来移动的量* Value 就是我们现在要移动的量
+同样1920 * value 就是我们现在UI的真实的宽度，进而就能计算出你想要的UI的宽度啦
