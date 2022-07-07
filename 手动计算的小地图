@@ -1,0 +1,19 @@
+其实很简单，首先是UI制作一个圆形的Mask让我们显示一个圆形的小地图，其次是代表玩家的UI不移动，而是移动的地图。
+至于计算，就是比例是1:1000的话，玩家在地图上移动了1000米，那么小地图移动1米就行啦。但是注意移动的是地图，所以得是反方向移动。把玩家的X,Z的值记录下来就好了。
+   private float map3DWidth = 1350f;//场景宽度 1350/  1000      
+    private float map2Dwidth;//小地图宽度 
+    private float widthScale;//两者比例、
+    //设置小地图大小
+    private void SetMapSize(float scale)
+    {
+        mapBg.GetComponent<RectTransform>().sizeDelta *= scale;
+        map2Dwidth = mapBg.GetComponent<RectTransform>().sizeDelta.x;
+        widthScale = map3DWidth / map2Dwidth;
+    }
+
+    private void Change2DPlayerPos()
+    
+            Vector3 pos3D = Camera.main.transform.position;
+            mapBg.localPosition = new Vector3(-pos3D.x / widthScale, -pos3D.z / widthScale, 0);
+        }
+    }
