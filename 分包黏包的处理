@@ -1,1 +1,68 @@
 
+处理分包黏包的方法就是在传输的包前增加一个记录包长度的Int类型数值，读取该包前，首先读取包头的这个值，通过这个值和实际得到的长度比较，如果实际包体更小，就是分包，否则为黏包。
+具体做法是现在本地创建一个用来缓存分包的字节数组。每次接收到消息后都将得到的这个包拷贝到原来的字节数组后面。
+对于黏包的情况，就意味着整个包体里至少有一个包是正常的，那么我们在while死循环里做判断，如果是黏包，那么就先读出来一个正常的包，然后从剩余的包体里继续读取。
+如果剩余的包体长度刚好为0，那么就意味着既没有分包也没有黏包。
+而如果剩余的包体长度不为0，就是分包，此时我们需要吧剩余的包体字节数组，覆盖掉我们缓存容器中原有的值就行了。等到下一次接受消息时一并处理。
+private void HandleReceiveMsg(byte [] receiveBytes,int receiveNum)
+    {
+        int msgID = 0;
+        int msgLength = 0;
+        int nowIndex = 0;
+
+        receiveBytes.CopyTo(cacheBytes,cacheNum);
+        cacheNum += receiveNum;
+        while (true)
+        {
+            //每次将长度设置为-1，是为了避免上次解析的数据影响这次的判断
+            msgLength = -1;
+            //处理一条解析消息
+            if (cacheNum - nowIndex >= 8)
+            {
+                msgID = BitConverter.ToInt32(cacheBytes, nowIndex);
+                nowIndex += 4;
+                msgLength = BitConverter.ToInt32(cacheBytes,nowIndex);
+                nowIndex += 4;
+            }
+            if (cacheNum - nowIndex >= msgLength&&msgLength !=-1)
+            {
+                //解析消息体
+                BaseMsg baseMsg = null;
+                switch (msgID)
+                {
+                    case 1001:
+                        PlayerMsg msg = new PlayerMsg();
+                        msg.Reading(cacheBytes, nowIndex);
+                        baseMsg = msg;
+                        break;
+                    default:
+                        break;
+                }
+                if (baseMsg!=null)
+                {
+                    //收到消息，解析为消息字符串，并放入公共容器
+                    receiveMsgQueue.Enqueue(baseMsg);
+                }
+                nowIndex += msgLength;
+                if (nowIndex==cacheNum)
+                {
+                    cacheNum = 0;
+                    break;
+                }
+            }
+            else
+            {
+                //如果不满足，证明有分包
+                //如果进行了ID和长度的解析，但是没有解析消息体，那么我们需要减去nowindex移动的位置
+                if (msgLength!=-1)
+                {
+                    nowIndex -= 8;
+                }
+                //就把剩余的没有解析的字符串，缓存到前面来用于下次解析
+                Array.Copy(cacheBytes,nowIndex,cacheBytes,0,cacheNum - nowIndex);
+                cacheNum = cacheNum - nowIndex;
+                break;
+            }
+
+        }
+    }
