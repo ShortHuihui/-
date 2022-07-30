@@ -1,0 +1,126 @@
+Json有LitJson ,JsonUtility等
+Json转换为C#，通常导入插件。然后ToObject即可。
+
+    private static ModuleABConfig LoadABConfig(string abConfigPath)
+    {
+        File.ReadAllText(abConfigPath);
+        return JsonMapper.ToObject<ModuleABConfig>(File.ReadAllText(abConfigPath));
+    }
+ C#转换为Json文件。先转换为字符串，在格式化为Json，在写入
+   File.Create(jsonPath).Dispose();
+            string jsonData = JsonMapper.ToJson(updateABConfig);
+            File.WriteAllText(jsonPath, ConvertJsonString(jsonData));
+            
+    private static string ConvertJsonString(string str)
+    {
+        JsonSerializer serializer = new JsonSerializer();
+        TextReader tr = new StringReader(str);
+        JsonTextReader jtr = new JsonTextReader(tr);
+
+        object obj = serializer.Deserialize(jtr);
+        if (obj != null)
+        {
+            StringWriter textWriter = new StringWriter();
+            JsonTextWriter jsonWriter = new JsonTextWriter(textWriter)
+            {
+                Formatting = Formatting.Indented,
+                Indentation = 4,
+                IndentChar = ' '
+            };
+
+            serializer.Serialize(jsonWriter, obj);
+            return textWriter.ToString();
+        }
+        else
+        {
+            return str;
+        }
+    }
+         
+         XML读取
+         
+    public static void FillLevel(string fileName,ref Level level)
+    {
+        FileInfo file = new FileInfo(fileName);
+        StreamReader sr = new StreamReader(file.OpenRead(),Encoding.UTF8);
+        XmlDocument doc = new XmlDocument();
+        doc.Load(sr);
+
+        level.Name = doc.SelectSingleNode("/Level/Name").InnerText;
+        level.Background = doc.SelectSingleNode("/Level/Background").InnerText;
+        level.Road = doc.SelectSingleNode("/Level/Road").InnerText;
+        level.InitScore = int.Parse(doc.SelectSingleNode("/Level/InitScore").InnerText);
+
+        XmlNodeList nodes;
+        nodes = doc.SelectNodes("/Level/Holder/Point");
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            XmlNode node = nodes[i];
+            Point p = new Point(
+                int.Parse(node.Attributes["X"].Value),
+                int.Parse(node.Attributes["Y"].Value)
+                );
+            level.Holders.Add(p);
+        }
+        nodes = doc.SelectNodes("/Level/Holder/Path");
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            XmlNode node = nodes[i];
+            Point p = new Point(
+                int.Parse(node.Attributes["X"].Value),
+                int.Parse(node.Attributes["Y"].Value)
+                );
+            level.Holders.Add(p);
+        }
+        nodes = doc.SelectNodes("/Level/Holder/Round");
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            XmlNode node = nodes[i];
+            Round r = new Round(
+                int.Parse(node.Attributes["Monster"].Value),
+                int.Parse(node.Attributes["Count"].Value)
+                ) ;
+            level.Rounds.Add(r);
+        }
+        sr.Close();
+        sr.Dispose();
+    }
+    XML写入
+    
+    public static void SaveLevel(string fileName,Level level)
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.AppendLine("<?xml version = \"1.0\" encoding= \"urf-8\"?>");
+        sb.AppendLine("<Level>");
+
+        sb.AppendLine(string.Format("<Name>{0}</Name>", level.Name)) ;
+        sb.AppendLine(string.Format("<Background>{0}</Background>",level.Background));
+        sb.AppendLine(string.Format("<Road>{0}</Road>",level.Road));
+        sb.AppendLine(string.Format("<InitScore>{0}</InitScore>",level.InitScore));
+
+        sb.AppendLine("<Holders>");
+        for (int i = 0; i < level.Holders.Count; i++)
+        {
+            sb.AppendLine(string.Format("<Point X =\"{0}\" Y = \"{1}\"/>",level.Holders[i].X,level.Holders[i].Y));
+        }
+        sb.AppendLine("</Holders>");
+
+        sb.AppendLine("Path");
+        for (int i = 0; i < level.Path.Count; i++)
+        {
+            sb.AppendLine(string.Format("<Point X = \"{0}\" Y = \"{1}\">",level.Path[i].X,level.Path[i].Y));
+        }
+        sb.AppendLine("</Path>");
+        sb.AppendLine("Round");
+        for (int i = 0; i < level.Rounds.Count; i++)
+        {
+            sb.AppendLine(string.Format("<Round Monster = \"{0}\" Count = \"{1}\">", level.Rounds[i].Monster, level.Rounds[i].Count));
+        }
+        sb.AppendLine("</Round>");
+
+        string content = sb.ToString();
+        StreamWriter sw = new StreamWriter(fileName,false,Encoding.UTF8);
+        sw.WriteLine(content);
+        sw.Flush();
+        sw.Dispose();
+    }
