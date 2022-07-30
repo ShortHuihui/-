@@ -1,1 +1,130 @@
 
+心跳消息和断开连接消息类似，都是发送一个空包给服务器，用来区分这两个包的就是包体前面所添加的一个他们特有的int类型的ID，如果在超时时间内没有收到心跳消息，就判断为断开连接。
+using System.Collections;
+using System.Collections.Generic;
+
+public class QuitMsg : BaseMsg
+{
+    public override int GetBytesNum()
+    {
+        return 8;
+    }
+    public override int Reading(byte[] bytes, int beginIndex = 0)
+    {
+        return 0;
+    }
+    public override byte[] Writing()
+    {
+        int index = 0;
+        byte[] bytes = new byte[GetBytesNum()];
+        WriteInt(bytes,GetID(),ref index);
+        WriteInt(bytes, 0, ref index);
+        return bytes;
+    }
+    public override int GetID()
+    {
+        return 1004;
+    }
+}
+
+
+using System.Collections;
+using System.Collections.Generic;
+
+public class HeartMsg :BaseMsg
+{
+    public override int GetBytesNum()
+    {
+        return 8;
+    }
+
+    public override int Reading(byte[] bytes, int beginIndex = 0)
+    {
+        return 0;
+    }
+
+    public override byte[] Writing()
+    {
+        int index = 0;
+        byte[] bytes = new byte[GetBytesNum()];
+        WriteInt(bytes,GetID(),ref index);
+        WriteInt(bytes,0,ref index);
+        return bytes;
+    }
+
+    public override int GetID()
+    {
+        return 1003;
+    }
+}
+
+
+
+
+        public void HandleMessage(object obj)
+        {
+            BaseMsg msg = obj as BaseMsg;
+            if (msg is PlayerMsg)
+            {
+                PlayerMsg playerMsg = msg as PlayerMsg;
+                Console.WriteLine("接收到{0}发来的消息{1}然后是{2}", playerMsg.playerID, playerMsg.playerData.name, playerMsg.playerData.lv);
+            }
+            else if (msg is QuitMsg)
+            {
+
+                Program.server.AddDelSocket(this);
+            }
+            else if (msg is HeartMsg)
+            {
+                frontTime = DateTime.Now.Ticks / TimeSpan.TicksPerSecond;
+                Console.WriteLine("收到心跳消息!");
+            }
+        }
+        
+        
+        
+        private void CheckTimeOut(object state)
+        {
+            while (this.socket != null && IsConnected)
+            {
+                if (frontTime != -1 && DateTime.Now.Ticks / TimeSpan.TicksPerSecond - frontTime >= TIME_OUT_TIME)
+                {
+                    Program.server.AddDelSocket(this);
+                    break;
+                }
+                Thread.Sleep(100);
+            }
+        }
+        
+        
+        
+        //将某个客户端加入待移除列表
+        public void AddDelSocket(ClientSocket socket)
+        {
+            if (!delList.Contains(socket))
+            {
+                delList.Add(socket);
+            }
+        }
+        //关闭客户端的连接
+        public void CloseDelListSocket()
+        {
+            //判断有没有断开连接的，把其移除
+            for (int i = 0; i < delList.Count; i++)
+            {
+                CloseClientSocket(delList[i]);
+            }
+            delList.Clear();
+        }
+        public void CloseClientSocket(ClientSocket socket)
+        {
+            lock (clientDic)
+            {
+                socket.Close();
+                if (clientDic.ContainsKey(socket.socketID))
+                {
+                    clientDic.Remove(socket.socketID);
+                    Console.WriteLine("客户端{0}断开连接了！",socket.socketID);
+                }
+            }
+        }
