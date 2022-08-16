@@ -1,0 +1,298 @@
+DownLoadFile:
+    /// <summary>
+    /// 多线程下载，断点续传有一句核心代码类似AddRange 指定了下载的起始和结束位置
+    /// 首先对于断点续传，小文件先获取本地文件大小，然后我们之前获取了要下载的大小，这时就可以开启一个线程去下载文件了
+    /// 对于大文件，需要结合多线程下载，要下载的大小/线程数量，就是我们每个文件要下载的大小。
+    /// 而我们多线程下载实际是把一个文件分成多个文件下载的，所以对于这些文件的下载，实际上就是之前说的处理小文件的逻辑
+    /// 就是说我们之前计算出来的数量-1，就是下载的结束位置，上个文件的结束位置+1就是下载的开始位置，本地获取的文件流大小就是已下载的长度
+    /// </summary>
+    public void Cut()
+    {
+        blockList.Clear();
+        loadSize = 0;
+        CheckDir(localPath);
+        string localTmpPath = null;
+        //检测本地是否有未下载完毕的文件
+        for (int i = 0; i < ProcessCount; i++)
+        {
+            if (File.Exists(GetTmpPath(i)))
+            {
+                localTmpPath = GetTmpPath(i);
+                break;
+            }
+        }
+        //看不懂（要下载的长度为0）
+        if (size<=0)
+        {
+            if (!string.IsNullOrEmpty(localTmpPath))
+            {
+                File.Delete(localTmpPath);
+            }
+            localTmpPath = GetTmpPath(0);
+            blockList.Add(new HttpDownloadFileBlock(new DownloadFile(url, localPath), 0, 0, 0, localTmpPath));
+            return;
+        }
+        //文件块大小
+        long blockSize = size / ProcessCount;
+        //余数
+        long modSize = size % blockSize;
+        FileStream inStream;
+        HttpDownloadFileBlock block;
+        //断点续传，以及多线程下载
+        if (!string.IsNullOrEmpty(localTmpPath))
+        {
+            if (size<singleTmpSize)
+            {
+                inStream = new FileStream(localTmpPath,FileMode.Open);
+                blockList.Add(new HttpDownloadFileBlock(new DownloadFile(url,localPath),0,size-1,inStream.Length,localTmpPath));
+                inStream.Close();
+            }
+            else
+            {
+                for (int i = 0; i < ProcessCount; i++)
+                {
+                    localTmpPath = GetTmpPath(i);
+                    if (File.Exists(localTmpPath))
+                    {
+                        inStream = new FileStream(localTmpPath, FileMode.Open);
+                        block = new HttpDownloadFileBlock(new DownloadFile(url, localPath), blockSize*i, blockSize*(i+1)-1, inStream.Length, localTmpPath);
+                        if (i==ProcessCount-1)
+                        {
+                            block.end += modSize;
+                        }
+                        blockList.Add(block);
+                        inStream.Close();
+                    }
+                    else
+                    {
+                        block = new HttpDownloadFileBlock(new DownloadFile(url, localPath), blockSize * i, blockSize * (i+1) - 1, 0, localTmpPath);
+                        if (i == ProcessCount - 1)
+                        {
+                            block.end += modSize;
+                        }
+                        blockList.Add(block);
+                    }
+                }
+            }
+        }
+        else
+        {
+            if (size<singleTmpSize)
+            {
+                localTmpPath = GetTmpPath(0);
+                blockList.Add(new HttpDownloadFileBlock(new DownloadFile(url, localPath), 0, size - 1, 0, localTmpPath));
+            }
+            else
+            {
+                for (int i = 0; i < ProcessCount; i++)
+                {
+                    localTmpPath = GetTmpPath(i);
+                    block = new HttpDownloadFileBlock(new DownloadFile(url, localPath), blockSize * i, blockSize * (i + 1) - 1, 0, localTmpPath);
+                    if (i == ProcessCount - 1)
+                    {
+                        block.end += modSize;
+                    }
+                    blockList.Add(block);
+                }
+            }
+        }
+    }
+
+
+    private void MergeFile()
+    {
+        //大文件（直接move）
+        if (size<singleTmpSize)
+        {
+            if (File.Exists(localPath))
+            {
+                File.Delete(localPath);
+            }
+            File.Move(GetTmpPath(0),localPath);
+            Complete();
+            return;
+        }
+        //小文件，在一个流里面拷贝
+        FileStream outStream = new FileStream(localPath,FileMode.Create);
+        FileStream inStream;
+        int readSize = 0;
+        Byte[] buffer = new Byte[1024];
+        for (int i = 0; i < ProcessCount; i++)
+        {
+            inStream = new FileStream(GetTmpPath(i),FileMode.Open);
+            while (true)
+            {
+                readSize = inStream.Read(buffer,0,buffer.Length );
+                if (readSize<=0)
+                {
+                    break;
+                }
+                outStream.Write(buffer,0,buffer.Length);
+            }
+            inStream.Close();
+        }
+        outStream.Close();
+        ClearTmp();
+        Complete();
+    }
+    private void Complete()
+    {
+        state = StateType.End;
+        if (completeCallback != null)
+        {
+            HttpDownload.AddLoaded(new DownloadFile(url, localPath));
+        }
+    }
+
+    public void ClearTmp()
+    {
+        string tmpPath = "";
+        for (int i = 0; i < ProcessCount; i++)
+        {
+            tmpPath = GetTmpPath(i);
+            if (File.Exists(tmpPath))
+            {
+                File.Delete(tmpPath);
+            }
+        }
+    }
+
+    private string GetTmpPath(int i)
+    {
+        return DownloadUtil.GetTmpPath(localPath, i);
+    }
+
+    private void CheckDir(string filePath)
+    {
+        DownloadUtil.CheckDir(filePath);
+    }
+    HttpDownloadFileBlock:
+    using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using UnityEngine;
+
+public class HttpDownloadFileBlock
+{
+    public DownloadFile downloadFile;
+    public string tmpPath;
+    public long begin;
+    public long end;
+    public long loadedSize = 0;
+    public LoadThread loadThread;
+
+    private bool _isComplete;
+    public bool IsComplete
+    {
+        get
+        {
+            if (_isComplete)
+                return _isComplete;
+
+            return end > 0 && begin + loadedSize > end;
+        }
+
+        set
+        {
+            _isComplete = value;
+        }
+    }
+
+    public float progress
+    {
+        get
+        {
+            if (end - begin <= 0)
+            {
+                return 0;
+            }
+
+            return loadedSize * 1f / (end - begin);
+        }
+    }
+    public HttpDownloadFileBlock(DownloadFile downloadFile, long begin, long end, long loadedSize, string tmpPath)
+    {
+        this.downloadFile = downloadFile;
+        this.begin = begin;
+        this.end = end;
+        this.loadedSize = loadedSize;
+        this.tmpPath = tmpPath;
+        downloadFile.loadSize += loadedSize;
+    }
+
+
+    HttpWebRequest httpRequest;
+    HttpWebResponse httpResponse;
+    Stream httpStream;
+    FileStream outStream;
+
+    public void Load(LoadThread thread)
+    {
+        _isComplete = false;
+        if (IsComplete)
+        {
+            downloadFile.OnLoadBlock(this);
+            return;
+        }
+        downloadFile.state = DownloadFile.StateType.Loading;
+        this.loadThread = thread;
+
+        Byte[] buffer = new Byte[1024];
+        int readSize = 0;
+        httpRequest = WebRequest.Create(downloadFile.url) as HttpWebRequest;
+        if (end>0)
+        {
+            httpRequest.AddRange((int)(begin+loadedSize),(int) end);
+        }
+        httpResponse = httpRequest.GetResponse() as HttpWebResponse;
+        httpStream = httpResponse.GetResponseStream();
+        outStream = new FileStream(tmpPath,loadedSize == 0?FileMode.Create:FileMode.Append);
+        while (true)
+        {
+            readSize = httpStream.Read(buffer,0,buffer.Length);
+            if (readSize<=0)
+            {
+                break;
+            }
+            outStream.Write(buffer,0,readSize);
+            loadedSize += readSize;
+            lock (downloadFile)
+            {
+                downloadFile.loadSize += readSize;
+            }
+        }
+        Abort();
+        if (end<=0)
+        {
+            lock (downloadFile)
+            {
+                downloadFile.size = downloadFile.loadSize;
+            }
+        }
+        IsComplete = true;
+        this.loadThread = null;
+        downloadFile.OnLoadBlock(this);
+    }
+    public void Abort()
+    {
+
+        if (outStream != null) outStream.Close();
+        if (httpStream != null) httpStream.Close();
+        if (httpResponse != null) httpResponse.Close();
+        if (httpRequest != null) httpRequest.Abort();
+
+        outStream = null;
+        httpStream = null;
+        httpResponse = null;
+        httpRequest = null;
+
+    }
+
+    public override string ToString()
+    {
+        return string.Format("[HttpDownloadFileBlock: IsComplete={0}, progress={1}, tmpPath={2}]", IsComplete, progress, tmpPath);
+    }
+
+}
